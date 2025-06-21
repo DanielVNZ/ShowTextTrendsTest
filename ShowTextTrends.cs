@@ -1,43 +1,29 @@
 ﻿using System;
 using System.IO;
-using Colossal.UI.Binding;
-using Game;
-using Game.Routes;
-using Game.UI;
-using Game.UI.InGame;
-using Unity.Mathematics;
+using System.Threading.Tasks;
 using Colossal.Logging;
 using Colossal.Serialization.Entities;
+using Colossal.UI.Binding;
+using Game;
 using Game.Modding;
+using Game.Routes;
 using Game.SceneFlow;
 using Game.Simulation;
+using Game.UI;
+using Game.UI.InGame;
 using Unity.Entities;
-using System.Threading.Tasks;
-
-
+using Unity.Mathematics;
 
 namespace ShowTextTrendsNew
 {
-    public partial class ShowTextTrends : ExtendedUISystemBase
+    public partial class ShowTextTrendsSystem : ExtendedUISystemBase
     {
-
         public ValueBindingHelper<int> SavedX;
         public ValueBindingHelper<int> SavedY;
-
-
-        public Mod _mod;
-
-        public ShowTextTrends(Mod mod)
-        {
-            _mod = mod;
-        }
-
-
 
         protected override void OnCreate()
         {
             base.OnCreate();
-
 
             CreateTrigger<int, int>("SavePosition", SavePosition);
             CreateTrigger("LoadPositionX", LoadPositionX);
@@ -45,18 +31,16 @@ namespace ShowTextTrendsNew
 
             SavedX = CreateBinding("LoadPositionX", 0);
             SavedY = CreateBinding("LoadPositionY", 0);
-
         }
 
         public void SavePosition(int x, int y)
         {
             Mod.log.Info($"Saving position: x={x}, y={y}");
 
-            if (_mod.m_Setting != null)
+            if (Mod.m_Setting != null)
             {
-                _mod.m_Setting.PosX = x;
-                _mod.m_Setting.PosY = y;
-
+                Mod.m_Setting.PosX = x;
+                Mod.m_Setting.PosY = y;
             }
 
             SavedX.Value = x;
@@ -65,7 +49,7 @@ namespace ShowTextTrendsNew
 
         public void LoadPositionX()
         {
-            int x = _mod.m_Setting?.PosX ?? 0;
+            int x = Mod.m_Setting?.PosX ?? 0;
             if (x == 0)
                 x = GetDefaultPosition().x;
 
@@ -75,7 +59,7 @@ namespace ShowTextTrendsNew
 
         public void LoadPositionY()
         {
-            int y = _mod.m_Setting?.PosY ?? 0;
+            int y = Mod.m_Setting?.PosY ?? 0;
             if (y == 0)
                 y = GetDefaultPosition().y;
 
@@ -87,14 +71,11 @@ namespace ShowTextTrendsNew
         {
             base.OnGameLoadingComplete(purpose, mode);
 
-            if (!mode.IsGameOrEditor())
+            if (mode != GameMode.Game)
                 return;
 
-            if (mode.IsGame())
-            {
-                LoadPositionX();
-                LoadPositionY();
-            }
+            LoadPositionX();
+            LoadPositionY();
         }
 
         private (int x, int y) GetDefaultPosition()

@@ -1,36 +1,24 @@
-﻿using Colossal;
+﻿using System.Collections.Generic;
+using Colossal;
 using Colossal.IO.AssetDatabase;
 using Game.Modding;
 using Game.Settings;
 using Game.UI;
 using Game.UI.Widgets;
 using ShowTextTrendsNew;
-using System.Collections.Generic;
 
 namespace ShowTextTrendsNew
 {
     [FileLocation(nameof(ShowTextTrendsNew))]
     public class Setting : ModSetting
     {
-
-        private ShowTextTrends showtexttrends;
-
-
-        public Setting(IMod mod) : base(mod)
-        {
-
-        }
-
+        public Setting(IMod mod)
+            : base(mod) { }
 
         public int PosX { get; set; }
         public int PosY { get; set; }
 
-        public override void SetDefaults()
-        {
-            throw new System.NotImplementedException();
-        }
-
-
+        public override void SetDefaults() { }
     }
 
     /*public class LocaleEN : IDictionarySource
