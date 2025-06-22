@@ -2,26 +2,50 @@
 	<!--Id must be set in order to update existed mod. it is not required for publishing mod for the first time-->
 	<ModId Value="" />
 	<!--Name of the mod to display to players-->
-	<DisplayName Value="ShowTextTrendsNew" />
+	<DisplayName Value="Show Text Trends 2.0" />
 	<!--Short description of the mod-->
 	<ShortDescription Value="This is a short description" />
 	<!--Long description of the mod. Single line or multi line. Supports minimal markdown subset-->
 	<!--LongDescription Value="This is a long description" /-->
 	<LongDescription>
-This is a long description
+This is a new version of Show Text Trends, it introduces a movable/resizable UI that can be hidden.
+
+Oh! and it now shows your monthly profit! 
+
+
+## How to use:
+
+* When you first load the game it will be open by default in the top left corner. Click and hold to drag it where you'd perfer.
+* Resize the window by dragging the bottom right corner.
+* The position of the container will save when you restart and load your game. 
+* If you do want to close it, you can reopen it with the button in the bottom left corner of your screen.
+
+
+## Why not just update the origional mod? 
+
+This mod changes alot, and I know people still love to use the existing one. So for that reason, the new UI will be its own mod. 
+
+## Credits:
+
+Thank you so much to StarQ, you have been an absolute legend with helping me. I couldnt have done it without you!! 
+
+
+# Known Issues:
+* When the menu is hidden, youll get a warning in your console that reads "Trying to set display proeprty to invalid value", this is safe to ignore. 
 	</LongDescription>
 	<!--Thumbnail-->
-	<Thumbnail Value="Properties/Thumbnail.png" />
+	<Thumbnail Value="Properties/Logo.png" />
 	<!--Screenshot, can be set multiple times-->
-	<Screenshot Value="" />
+	<Screenshot Value="Properties/image1.png" />
+	<Screenshot Value="Properties/image2.png" />
 	<!--Tag, can be set multiple times-->
 	<Tag Value="" />
 	<!--Link to the forum post where the mod can be discussed-->
-	<ForumLink Value="" />
+	<ForumLink Value="https://forum.paradoxplaza.com/forum/threads/show-text-trends-2-0.1800353/" />
 	<!--Version of the mod-->
 	<ModVersion Value="1.0" />
 	<!--Recommended version of the base game to use the mod-->
-	<GameVersion Value="1.0.*" />
+	<GameVersion Value="1.*" />
 	<!--Dependency for the mod, can be set multiple times-->
 	<Dependency Id="" />
 	<!--Required DLC, can be set multiple times. Supported values are "Landmark Buildings", "San Fransisco Set", "Beach Properties", "Urban Promenades", "Modern Architecture"-->
@@ -31,5 +55,5 @@ This is a long description
 	<!--<ChangeLog>
 	</ChangeLog>-->
 	<!--External link, can be set multiple times. supported types are "discord", "github", "youtube", "twitch", "x", "paypal", "patreon", "buymeacoffee", "kofi", "crowdin", "gitlab", "gofundme"-->
-	<ExternalLink Type="" Url="" />
+	<ExternalLink Type="github" Url="https://github.com/DanielVNZ/ShowTextTrendsTest" />
 </Publish>

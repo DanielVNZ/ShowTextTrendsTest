@@ -2,6 +2,7 @@
 import { useValue, bindLocalValue, bindValue, trigger } from 'cs2/api';
 import { toolbarBottom, economyBudget } from 'cs2/bindings';
 import mod from "mod.json";
+import { load } from 'cheerio';
 
 // Format numbers with commas (e.g., 123456 → "123,456")
 const formatNumber = (value: number): string => {
@@ -25,7 +26,44 @@ const formatSignedPop = (value: number): string => {
     return formatNumber(value);
 };
 
+
+const useWindowDimensions = () => {
+    const [windowDimensions, setWindowDimensions] = useState({
+        width: typeof window !== 'undefined' && window.innerWidth > 0 ? window.innerWidth : 1920,
+        height: typeof window !== 'undefined' && window.innerHeight > 0 ? window.innerHeight : 1080,
+    });
+
+    useEffect(() => {
+        const handleResize = () => {
+            const newWidth = window.innerWidth || 1920;
+            const newHeight = window.innerHeight || 1080;
+
+            setWindowDimensions({
+                width: newWidth > 0 ? newWidth : 1920,
+                height: newHeight > 0 ? newHeight : 1080,
+            });
+        };
+
+        window.addEventListener('resize', handleResize);
+        // Set initial values
+        handleResize();
+
+        return () => window.removeEventListener('resize', handleResize);
+    }, []);
+
+    return windowDimensions;
+};
+
+
 export const ShowTrendsComponent = () => {
+    const { width: rawWindowWidth, height: rawWindowHeight } = useWindowDimensions();
+
+    // Add validation to ensure dimensions are always valid
+    const safeWindowWidth = rawWindowWidth && rawWindowWidth > 0 ? rawWindowWidth : 1920;
+    const safeWindowHeight = rawWindowHeight && rawWindowHeight > 0 ? rawWindowHeight : 1080;
+
+    const MAX_WIDTH = 800;  // Maximum width in pixels
+    const MAX_HEIGHT = 600; // Maximum height in pixels
     // Money stats
     const moneyPerHour = useValue(toolbarBottom.moneyDelta$); // hourly rate
 
@@ -51,14 +89,14 @@ export const ShowTrendsComponent = () => {
 
     // Position state (load from saved or default)
     const [position, setPosition] = useState({
-        x: (window.innerWidth - 320) / 2, // horizontally centered
-        y: window.innerHeight * 0.8,      // about 80% down from top, so about 40% up from bottom
+        x: (safeWindowWidth - 330) / 2,
+        y: safeWindowHeight * 0.8,
     });
 
     // Resizable box state (size)
     const [size, setSize] = useState({
-        width: 320,
-        height: 90,
+        width: 330,
+        height: 80,
     });
 
     // Dragging state for moving window
@@ -73,7 +111,7 @@ export const ShowTrendsComponent = () => {
     const posStart = useRef({ x: 0, y: 0 });
 
     // Show/hide state
-    const [visible, setVisible] = useState(true);
+    const [visible, setVisible] = useState(2);
 
     // Hover state for main box
     const [boxHovered, setBoxHovered] = useState(false);
@@ -94,36 +132,64 @@ export const ShowTrendsComponent = () => {
     }, [monthlyBalance]);
 
 
-    let loadedposX = 0;
-    let loadedposY = 0;
 
-    try {
-        const loadedXBinding = bindValue<number>(mod.id, "LoadPositionX");
-        const loadedYBinding = bindValue<number>(mod.id, "LoadPositionY");
+    //Position
+    const loadedXBinding = bindValue<number>(mod.id, "LoadPositionX");
+    const loadedYBinding = bindValue<number>(mod.id, "LoadPositionY");
 
-        loadedposX = useValue(loadedXBinding) ?? 0;
-        loadedposY = useValue(loadedYBinding) ?? 0;
-    } catch (e) {
-        console.error("Failed to load saved position:", e);
-    }
+    const loadedPosX = useValue(loadedXBinding);
+    const loadedPosY = useValue(loadedYBinding);
+
+    //Size
+    const loadedWidthBinding = bindValue<number>(mod.id, "LoadSizeWidth");
+    const loadedHeightBinding = bindValue<number>(mod.id, "LoadSizeHeight");
+
+    const loadedVisBinding = bindValue<number>(mod.id, "LoadSavedVis");
+
+    const loadedWidth = useValue(loadedWidthBinding);
+    const loadedHeight = useValue(loadedHeightBinding);
+
+    const savedVisible = useValue(loadedVisBinding); 
+  
 
 
     // Load saved position on mount
     useEffect(() => {
-        (async () => {
-            try {
+        if (typeof loadedPosX === 'number' && typeof loadedPosY === 'number') {
+            setPosition({
+                x: Math.max(0, Math.min(window.innerWidth - size.width, loadedPosX)),
+                y: Math.max(0, Math.min(window.innerHeight - size.height, loadedPosY)),
+            });
+        }
+    }, [loadedWidth, loadedHeight, size.width, size.height]);
 
-                const clampedX = Math.max(0, Math.min(window.innerWidth - size.width, loadedposX));
-                const clampedY = Math.max(0, Math.min(window.innerHeight - size.height, loadedposY));
-  
-                setPosition({ x: clampedX, y: clampedY });
+    // Load saved size on mount
+    // Load saved size on mount with validation
+    useEffect(() => {
+        if (typeof loadedWidth === 'number' && typeof loadedHeight === 'number') {
+
+            // Validate the loaded values before using them
+            const validWidth = loadedWidth > 0 && loadedWidth >= 330 ? loadedWidth : 330;
+            const validHeight = loadedHeight > 0 && loadedHeight >= 80 ? loadedHeight : 80;
+
+            setSize({ width: validWidth, height: validHeight });
+        }
+    }, [loadedWidth, loadedHeight]);
 
 
-            } catch (err) {
+    // Load visibility
+    useEffect(() => {
+        if (savedVisible == 2) {
+            setVisible(2);
+        } else if (savedVisible == 1) {
+            setVisible(1);
+        }
+        else {
+            setVisible(2); // default fallback if not defined
+        }
+    }, [savedVisible]);
 
-            }
-        })();
-    }, [size.width, size.height]);
+
 
     // Drag window handlers
     const onMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -150,61 +216,86 @@ export const ShowTrendsComponent = () => {
     useEffect(() => {
         if (!dragging && !resizing) return;
 
+        // Calculate aspect-ratio compatible minimums
+        const originalAspectRatio = 330 / 80; // 4.125
+        const baseMinWidth = 240;
+        const baseMinHeight = 80;
+
+        // Ensure minimums maintain aspect ratio
+        const minWidth = Math.max(baseMinWidth, baseMinHeight * originalAspectRatio);
+        const minHeight = Math.max(baseMinHeight, baseMinWidth / originalAspectRatio);
+
         const onMouseMove = (e: MouseEvent) => {
             if (dragging) {
                 const dx = e.clientX - dragStart.current.x;
                 const dy = e.clientY - dragStart.current.y;
+
                 let newX = boxStart.current.x + dx;
                 let newY = boxStart.current.y + dy;
 
-                // Keep the box within the window bounds
-                newX = Math.max(0, Math.min(window.innerWidth - size.width, newX));
-                newY = Math.max(0, Math.min(window.innerHeight - size.height, newY));
+                // Clamp position inside viewport
+                newX = Math.min(Math.max(0, newX), window.innerWidth - size.width);
+                newY = Math.min(Math.max(0, newY), window.innerHeight - size.height);
 
                 setPosition({ x: newX, y: newY });
-                // Save position while dragging
                 trigger(mod.id, "SavePosition", newX, newY);
-            } else if (resizing) {
+
+            } else if (resizing === 'bottom-right') {
                 const dx = e.clientX - resizeStart.current.x;
                 const dy = e.clientY - resizeStart.current.y;
 
-                let newWidth = sizeStart.current.width;
-                let newHeight = sizeStart.current.height;
-                let newX = posStart.current.x;
-                let newY = posStart.current.y;
+                const aspectRatio = sizeStart.current.width / sizeStart.current.height;
 
-                const minWidth = 240;
-                const minHeight = 80;
+                let proposedWidth = sizeStart.current.width + dx;
+                let proposedHeight = sizeStart.current.height + dy;
 
-                if (resizing.includes('right')) {
-                    newWidth = Math.max(minWidth, sizeStart.current.width + dx);
-                    if (newWidth + newX > window.innerWidth) newWidth = window.innerWidth - newX;
-                }
-                if (resizing.includes('bottom')) {
-                    newHeight = Math.max(minHeight, sizeStart.current.height + dy);
-                    if (newHeight + newY > window.innerHeight) newHeight = window.innerHeight - newY;
-                }
-                if (resizing.includes('left')) {
-                    newWidth = Math.max(minWidth, sizeStart.current.width - dx);
-                    newX = Math.min(posStart.current.x + dx, posStart.current.x + sizeStart.current.width - minWidth);
-                    if (newX < 0) {
-                        newWidth += newX;
-                        newX = 0;
+                // Apply size limits
+                const maxWidth = Math.min(MAX_WIDTH, window.innerWidth - posStart.current.x);
+                const maxHeight = Math.min(MAX_HEIGHT, window.innerHeight - posStart.current.y);
+
+                // Determine which dimension to follow based on mouse movement
+                const widthDelta = Math.abs(dx);
+                const heightDelta = Math.abs(dy);
+
+                let finalWidth, finalHeight;
+
+                if (widthDelta >= heightDelta) {
+                    // Follow width, calculate height
+                    finalWidth = Math.min(Math.max(proposedWidth, minWidth), maxWidth);
+                    finalHeight = finalWidth / aspectRatio;
+
+                    // If calculated height exceeds limits, adjust both
+                    if (finalHeight > maxHeight) {
+                        finalHeight = maxHeight;
+                        finalWidth = finalHeight * aspectRatio;
+                    } else if (finalHeight < minHeight) {
+                        finalHeight = minHeight;
+                        finalWidth = finalHeight * aspectRatio;
+                    }
+                } else {
+                    // Follow height, calculate width
+                    finalHeight = Math.min(Math.max(proposedHeight, minHeight), maxHeight);
+                    finalWidth = finalHeight * aspectRatio;
+
+                    // If calculated width exceeds limits, adjust both
+                    if (finalWidth > maxWidth) {
+                        finalWidth = maxWidth;
+                        finalHeight = finalWidth / aspectRatio;
+                    } else if (finalWidth < minWidth) {
+                        finalWidth = minWidth;
+                        finalHeight = finalWidth / aspectRatio;
                     }
                 }
-                if (resizing.includes('top')) {
-                    newHeight = Math.max(minHeight, sizeStart.current.height - dy);
-                    newY = Math.min(posStart.current.y + dy, posStart.current.y + sizeStart.current.height - minHeight);
-                    if (newY < 0) {
-                        newHeight += newY;
-                        newY = 0;
-                    }
-                }
 
-                setPosition({ x: newX, y: newY });
-                setSize({ width: newWidth, height: newHeight });
-                // Save position while resizing
-                trigger(mod.id, "SavePosition", newX, newY);
+                // Final safety clamps
+                finalWidth = Math.min(Math.max(finalWidth, minWidth), maxWidth);
+                finalHeight = Math.min(Math.max(finalHeight, minHeight), maxHeight);
+
+                setSize({ width: finalWidth, height: finalHeight });
+                setPosition({ x: posStart.current.x, y: posStart.current.y });
+
+                trigger(mod.id, "SaveSize", finalWidth, finalHeight);
+                trigger(mod.id, "SavePosition", posStart.current.x, posStart.current.y);
             }
         };
 
@@ -221,45 +312,88 @@ export const ShowTrendsComponent = () => {
             window.removeEventListener('mousemove', onMouseMove);
             window.removeEventListener('mouseup', onMouseUp);
         };
-    }, [dragging, resizing, position.x, position.y, size.width, size.height]);
+    }, [dragging, resizing, size.width, size.height, position.x, position.y, MAX_WIDTH, MAX_HEIGHT]);
 
-    // Safe number conversion
+
+    // Safe number conversion with validation
     const safeMoneyPerHour = typeof moneyPerHour === 'number' ? moneyPerHour : 0;
     const safePopPerHour = typeof popPerHour === 'number' ? popPerHour : 0;
     const safeMonthlyBalance = typeof monthlyBalance === 'number' ? monthlyBalance : 0;
 
-    // Dynamic font size based on width of box, between 12 and 18 px
-    const baseWidth = 320;
+    const minFontSize = 2;
     const baseFontSize = 16;
-    const minFontSize = 6;
-    const scale = size.width / baseWidth;
-    const fontSize = Math.max(minFontSize, baseFontSize * scale);
+
+    // Add safety checks for size calculations
+    const safeWidth = Math.max(330, size.width || 330);
+    const safeHeight = Math.max(80, size.height || 80);
+
+    const scaleX = safeWidth / 330;
+    const scaleY = safeHeight / 80;
+
+    // Ensure avgScale is always valid
+    const avgScale = Math.max(0.3, Math.min(3, (scaleX + scaleY) / 2));
+
+    // Ensure fontSize is always valid
+    const fontSize = Math.max(minFontSize, Math.min(100, baseFontSize * avgScale));
+
+
+    // Default position and size constants (match your initial state)
+    const defaultPosition = { x: (safeWindowWidth - 330) / 2, y: safeWindowHeight * 0.8 };
+    const defaultSize = { width: 330, height: 80 };
+
+    const resetTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+    const onContainerMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+        // If resizing or dragging, do nothing here to avoid conflicts
+        if (dragging || resizing) return;
+
+        // Start a timer to reset after 1 second hold
+        resetTimeoutRef.current = setTimeout(() => {
+            setPosition(defaultPosition);
+            setSize(defaultSize);
+            trigger(mod.id, "SavePosition", defaultPosition.x, defaultPosition.y);
+            trigger(mod.id, "SaveSize", defaultSize.width, defaultSize.height);
+        }, 2500);
+    };
+
+    const onContainerMouseUp = (e: React.MouseEvent<HTMLDivElement>) => {
+        // Cancel reset timer if mouse released before 1 second
+        if (resetTimeoutRef.current) {
+            clearTimeout(resetTimeoutRef.current);
+            resetTimeoutRef.current = null;
+        }
+    };
+
 
     return (
         <>
             {/* Show Trends button */}
-            {!visible && (
+            {visible == 1 && safeWindowWidth > 0 && safeWindowHeight > 0 && (
                 <button
-                    onClick={() => setVisible(true)}
+                    onClick={() => {
+                        setVisible(2);
+                        trigger(mod.id, "SaveVis", 2);
+                    }}
                     style={{
                         position: 'fixed',
-                        top: 20,
-                        left: '50%',
-                        width: 120,          // FIXED width
-                        transform: 'translateX(-50%) scale(1)', // include initial scale 1
+                        left: Math.max(20, safeWindowWidth * 0.02) || 20,
+                        bottom: Math.max(48, safeWindowHeight * 0.12) || 48,
+                        width: Math.min(130, Math.max(100, safeWindowWidth * 0.08)) || 100,
+                        height: Math.min(50, Math.max(35, safeWindowHeight * 0.04)) || 35,
+                        transform: 'scale(1)',
                         transformOrigin: 'center center',
-                        background: 'linear-gradient(135deg, rgba(0,15,30,0.9) 0%, rgba(15,0,30,0.9) 50%, rgba(0,15,30,0.9) 100%)',
+                        background: 'linear-gradient(135deg, rgba(0,15,30,0.9), rgba(15,0,30,0.9), rgba(0,15,30,0.9))',
                         border: '1px solid rgba(0,255,136,0.4)',
                         color: '#fff',
                         fontWeight: 'bold',
-                        borderRadius: 8,
-                        padding: '8px 14px',
+                        borderRadius: Math.min(10, Math.max(6, safeWindowWidth * 0.006)) || 8,
+                        padding: `${Math.min(8, Math.max(4, safeWindowHeight * 0.005)) || 6}px ${Math.min(12, Math.max(8, safeWindowWidth * 0.008)) || 10}px`,
                         cursor: 'pointer',
                         zIndex: 999999,
-                        fontSize: 13,
+                        fontSize: Math.min(16, Math.max(12, safeWindowWidth * 0.01)) || 14,
                         boxShadow: '0 0 8px rgba(0,255,136,0.2)',
                         backdropFilter: 'blur(6px)',
-                        transition: 'all 0.2s ease',
+                        transition: 'transform 0.2s ease, background 0.2s ease',
                         pointerEvents: 'auto',
                         userSelect: 'none',
                         display: 'inline-block',
@@ -267,12 +401,12 @@ export const ShowTrendsComponent = () => {
                         boxSizing: 'border-box',
                     }}
                     onMouseEnter={e => {
-                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(0,20,40,0.95) 0%, rgba(20,0,40,0.95) 50%, rgba(0,20,40,0.95) 100%)';
-                        e.currentTarget.style.transform = 'translateX(-50%) scale(1.05)'; // only scale changes
+                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(0,20,40,0.95), rgba(20,0,40,0.95), rgba(0,20,40,0.95))';
+                        e.currentTarget.style.transform = 'scale(1.05)';
                     }}
                     onMouseLeave={e => {
-                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(0,15,30,0.9) 0%, rgba(15,0,30,0.9) 50%, rgba(0,15,30,0.9) 100%)';
-                        e.currentTarget.style.transform = 'translateX(-50%) scale(1)';
+                        e.currentTarget.style.background = 'linear-gradient(135deg, rgba(0,15,30,0.9), rgba(15,0,30,0.9), rgba(0,15,30,0.9))';
+                        e.currentTarget.style.transform = 'scale(1)';
                     }}
                     title="Show trends"
                 >
@@ -281,38 +415,43 @@ export const ShowTrendsComponent = () => {
             )}
 
             {/* Main draggable container */}
-            {visible && (
+            {visible == 2 && (
                 <div
                     key={pulseKey}
-                    onMouseDown={onMouseDown}
+                    onMouseDown={(e) => {
+                        onMouseDown(e);       // drag start
+                        onContainerMouseDown(e); // reset timer start
+                    }}
+                    onMouseUp={(e) => {
+                        onContainerMouseUp(e); // cancel reset timer
+                    }}
                     style={{
-                        position: 'fixed',
                         left: position.x,
                         top: position.y,
                         width: size.width,
                         height: size.height,
-                        padding: '12px 50px 12px 18px',
+                        padding: `${12 * scaleY}px ${50 * scaleX}px ${12 * scaleY}px ${18 * scaleX}px`,
                         background: boxHovered
                             ? 'linear-gradient(135deg, rgba(0,20,40,0.95), rgba(20,0,40,0.95), rgba(0,20,40,0.95))'
                             : 'linear-gradient(135deg, rgba(0,15,30,0.9), rgba(15,0,30,0.9), rgba(0,15,30,0.9))',
                         color: 'white',
                         fontSize: `${fontSize}px`,
-                        borderRadius: '12px',
+                        borderRadius: `${12 * avgScale}px`,
                         border: boxHovered
                             ? '2px solid rgba(0,255,136,0.6)'
                             : '2px solid rgba(255,255,255,0.2)',
                         zIndex: 999999,
-                        minWidth: 320,
-                        minHeight: 60,
+                        minWidth: 110,
+                        minHeight: 20,
                         maxWidth: '90vw',
                         maxHeight: '70vh',
                         boxSizing: 'border-box',
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: '8px',
+                        gap: `${8 * scaleY}px`,
                         boxShadow: boxHovered
-                            ? `0 0 20px rgba(0,255,136,0.3), 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)`
-                            : `0 0 15px rgba(0,255,136,0.2), 0 6px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)`,
+                            ? `0 0 ${20 * scaleY}px rgba(0,255,136,0.3), 0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.1)`
+                            : `0 0 ${15 * scaleY}px rgba(0,255,136,0.2), 0 6px 24px rgba(0,0,0,0.3), inset 0 1px 0 rgba(255,255,255,0.05)`,
                         pointerEvents: 'auto',
                         userSelect: 'none',
                         backdropFilter: 'blur(10px)',
@@ -321,105 +460,19 @@ export const ShowTrendsComponent = () => {
                         animation: 'pulse 0.6s ease-out',
                         cursor: dragging || resizing ? (dragging ? 'grabbing' : 'nwse-resize') : 'grab',
                         overflow: 'hidden',
+                        position: 'fixed', // Important for absolute children
                     }}
                     onMouseEnter={() => setBoxHovered(true)}
                     onMouseLeave={() => setBoxHovered(false)}
                 >
-                    {/* Glow/pulse style */}
-                    <style>
-                        {`
-                        @keyframes pulse {
-                            0% { transform: scale(1); }
-                            50% { transform: scale(1.05); box-shadow: 0 0 25px rgba(0,255,136,0.5), 0 8px 32px rgba(0,0,0,0.4); }
-                            100% { transform: scale(1); }
-                        }
-                        @keyframes glow {
-                            0%, 100% {
-                                text-shadow: 0 0 5px currentColor, 0 0 5px currentColor;
-                            }
-                            50% {
-                                text-shadow: 0 0 15px currentColor, 0 0 25px currentColor;
-                            }
-                        }
-                        .stat-value {
-                            animation: glow 2s ease-in-out infinite;
-                        }
-                        .cs2-stats-close-btn {
-                            flex-shrink: 0;
-                        }
-                        .resize-handle {
-                            position: absolute;
-                            background: transparent;
-                            z-index: 10;
-                        }
-                        .resize-handle:hover {
-                            background: rgba(0,255,136,0.3);
-                        }
-                        .resize-handle-corner {
-                            width: 16px;
-                            height: 16px;
-                        }
-                        .resize-handle-edge-horizontal {
-                            height: 8px;
-                            width: 100%;
-                        }
-                        .resize-handle-edge-vertical {
-                            width: 8px;
-                            height: 100%;
-                        }
-                        .resize-handle-top {
-                            top: 0;
-                            left: 8px;
-                            right: 8px;
-                            cursor: ns-resize;
-                        }
-                        .resize-handle-bottom {
-                            bottom: 0;
-                            left: 8px;
-                            right: 8px;
-                            cursor: ns-resize;
-                        }
-                        .resize-handle-left {
-                            top: 8px;
-                            bottom: 8px;
-                            left: 0;
-                            cursor: ew-resize;
-                        }
-                        .resize-handle-right {
-                            top: 8px;
-                            bottom: 8px;
-                            right: 0;
-                            cursor: ew-resize;
-                        }
-                        .resize-handle-top-left {
-                            top: 0;
-                            left: 0;
-                            cursor: nwse-resize;
-                        }
-                        .resize-handle-top-right {
-                            top: 0;
-                            right: 0;
-                            cursor: nesw-resize;
-                        }
-                        .resize-handle-bottom-left {
-                            bottom: 0;
-                            left: 0;
-                            cursor: nesw-resize;
-                        }
-                        .resize-handle-bottom-right {
-                            bottom: 0;
-                            right: 0;
-                            cursor: nwse-resize;
-                        }
-                    `}
-                    </style>
-
                     {/* Close Button */}
                     <button
+                        onMouseDown={(e) => e.stopPropagation()} 
                         className="cs2-stats-close-btn"
                         onClick={e => {
                             e.stopPropagation();
-                            setVisible(false);
+                            setVisible(1);
+                            trigger(mod.id, "SaveVis", 1);
                         }}
                         style={{
                             position: 'absolute',
@@ -430,11 +483,11 @@ export const ShowTrendsComponent = () => {
                             color: '#fff',
                             fontWeight: 'bold',
                             borderRadius: '50%',
-                            width: 20,
-                            height: 20,
+                            width: 20 * scaleX,
+                            height: 20 * scaleY,
                             cursor: 'pointer',
-                            fontSize: 14,
-                            lineHeight: '16px',
+                            fontSize: fontSize * 0.9,
+                            lineHeight: `${fontSize * 0.9}px`,
                             padding: 0,
                             display: 'flex',
                             alignItems: 'center',
@@ -462,20 +515,19 @@ export const ShowTrendsComponent = () => {
                         style={{
                             display: 'flex',
                             flexDirection: 'column',
-                            gap: '8px',
+                            gap: `${8 * scaleY}px`,
                             flexGrow: 1,
                             overflow: 'auto',
                         }}
                     >
                         {/* Money Stats */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', minWidth: 0 }}>
-                            <span style={{ fontWeight: 'bold', marginRight: 8, fontSize: fontSize * 0.9, color: 'white' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 * scaleX, flexWrap: 'wrap', minWidth: 0 }}>
+                            <span style={{ fontWeight: 'bold', marginRight: 8 * scaleX, fontSize: fontSize * 0.9, color: 'white' }}>
                                 Money:
                             </span>
                             <span className="stat-value" style={{
                                 color: getColor(safeMoneyPerHour),
                                 fontWeight: 600,
-                                textShadow: `0 0 10px ${getGlowColor(safeMoneyPerHour)}`,
                                 fontSize: fontSize,
                             }}>
                                 {formatSignedMoney(safeMoneyPerHour)}
@@ -486,7 +538,6 @@ export const ShowTrendsComponent = () => {
                             <span className="stat-value" style={{
                                 color: getColor(safeMonthlyBalance),
                                 fontWeight: 600,
-                                textShadow: `0 0 10px ${getGlowColor(safeMonthlyBalance)}`,
                                 fontSize: fontSize,
                             }}>
                                 {formatSignedMoney(safeMonthlyBalance)}
@@ -497,14 +548,13 @@ export const ShowTrendsComponent = () => {
                         </div>
 
                         {/* Population Stats */}
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', minWidth: 0 }}>
-                            <span style={{ fontWeight: 'bold', marginRight: 8, fontSize: fontSize * 0.9, color: 'white' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10 * scaleX, flexWrap: 'wrap', minWidth: 0 }}>
+                            <span style={{ fontWeight: 'bold', marginRight: 8 * scaleX, fontSize: fontSize * 0.9, color: 'white' }}>
                                 Pop:
                             </span>
                             <span className="stat-value" style={{
                                 color: getColor(safePopPerHour),
                                 fontWeight: 600,
-                                textShadow: `0 0 10px ${getGlowColor(safePopPerHour)}`,
                                 fontSize: fontSize,
                             }}>
                                 {formatSignedPop(safePopPerHour)}
@@ -515,15 +565,46 @@ export const ShowTrendsComponent = () => {
                         </div>
                     </div>
 
-                    {/* Resize Handles */}
-                    <div className="resize-handle resize-handle-top" onMouseDown={e => onResizeMouseDown(e, 'top')} />
-                    <div className="resize-handle resize-handle-bottom" onMouseDown={e => onResizeMouseDown(e, 'bottom')} />
-                    <div className="resize-handle resize-handle-left" onMouseDown={e => onResizeMouseDown(e, 'left')} />
-                    <div className="resize-handle resize-handle-right" onMouseDown={e => onResizeMouseDown(e, 'right')} />
-                    <div className="resize-handle resize-handle-top-left resize-handle-corner" onMouseDown={e => onResizeMouseDown(e, 'top-left')} />
-                    <div className="resize-handle resize-handle-top-right resize-handle-corner" onMouseDown={e => onResizeMouseDown(e, 'top-right')} />
-                    <div className="resize-handle resize-handle-bottom-left resize-handle-corner" onMouseDown={e => onResizeMouseDown(e, 'bottom-left')} />
-                    <div className="resize-handle resize-handle-bottom-right resize-handle-corner" onMouseDown={e => onResizeMouseDown(e, 'bottom-right')} />
+                    {/* Resize Handle */}
+                    {/* Resize Handle */}
+                    <div
+                        className="resize-handle resize-handle-bottom-right resize-handle-corner"
+                        style={{
+                            width: 16 * scaleX,
+                            height: 16 * scaleY,
+                            position: 'absolute',
+                            bottom: 0,
+                            right: 0,
+                            cursor: 'nwse-resize',
+                            zIndex: 10000,
+                            background: 'transparent',
+                            display: 'flex',
+                            alignItems: 'flex-end',
+                            justifyContent: 'flex-end',
+                            padding: '2px',
+                        }}
+                        onMouseDown={e => {
+                            e.stopPropagation();
+                            onResizeMouseDown(e, 'bottom-right');
+                        }}
+                    >
+                        {/* Visual resize grip */}
+                        <div
+                            style={{
+                                width: Math.max(8, 12 * Math.min(scaleX, scaleY)),
+                                height: Math.max(8, 12 * Math.min(scaleX, scaleY)),
+                                background: `
+                linear-gradient(135deg, transparent 46%, rgba(255,255,255,0.3) 49%, rgba(255,255,255,0.3) 51%, transparent 54%),
+                linear-gradient(135deg, transparent 36%, rgba(255,255,255,0.2) 39%, rgba(255,255,255,0.2) 41%, transparent 44%),
+                linear-gradient(135deg, transparent 26%, rgba(255,255,255,0.1) 29%, rgba(255,255,255,0.1) 31%, transparent 34%)
+            `,
+                                borderRadius: '0 0 8px 0',
+                                opacity: boxHovered ? 0.8 : 0.4,
+                                transition: 'opacity 0.2s ease',
+                                pointerEvents: 'none',
+                            }}
+                        />
+                    </div>
                 </div>
             )}
         </>
