@@ -16,3 +16,8 @@ This mod changes a lot, and I know people still love to use the existing one. So
 Thank you so much to StarQ, you have been an absolute legend with helping me. I couldn't have done it without you!! Also thanks for the new name idea!
 
 Download Here: https://mods.paradoxplaza.com/mods/113744/Windows/
+
+**1.3 - Released 2025-06-23**
+* Fixed snapping back to default location: Credit: OneRandomPlayer.
+* Added a help tooltip.
+* Made the resize button white to make it easier to see.
